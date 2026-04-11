@@ -13,7 +13,7 @@
 
 - [Course wiki (practical instructions)](https://github.com/GeoGenetics/NBIB25004U-Metagenomics-2026/wiki)
 - [Main course repository](https://github.com/GeoGenetics/NBIB25004U-Metagenomics-2026)
-- [Mjolnir HPC documentation](https://hpc.ku.dk/)
+- [Mjolnir HPC documentation](https://mjolnir-ucph.dk/)
 
 ## Instructors
 
@@ -58,13 +58,11 @@
 └── report/                        # Final group report
 ```
 
-Each weekly folder has its own README with objectives and a link to the corresponding wiki page.
-
 ## Getting started
 
 ```bash
-git clone git@github.com:geogenetics-edu/metagenomics-2026-<your-team>.git
-cd metagenomics-2026-<your-team>
+git clone git@github.com:geogenetics-edu/group-project-<your-team>.git
+cd group-project-<your-team>
 ```
 
 ## Basic git workflow
