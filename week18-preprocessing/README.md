@@ -1,15 +1,5 @@
 # Week 18 — Pre-processing, Assembly, and Binning
 
-## Schedule
-
-| Day | Time | Activity |
-|-----|------|----------|
-| Monday | 09:15–12:00 | Theory: pre-processing, assembly, binning (adapter trimming, QC, host removal) |
-| Tuesday | 13:15–14:15 | Practical: sample pre-processing and QC |
-| Tuesday | 14:30–16:00 | Practical: assembly and binning (part 1) |
-| Friday | 09:15–10:30 | Practical: assembly and binning (part 2) |
-| Friday | 10:45–12:00 | Guest lecture |
-
 ## Learning objectives
 
 - Inspect raw reads and interpret QC reports
