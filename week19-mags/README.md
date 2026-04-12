@@ -1,14 +1,5 @@
 # Week 19 — Characterisation of MAGs (Taxonomy & Function)
 
-## Schedule
-
-| Day | Time | Activity |
-|-----|------|----------|
-| Monday | 09:15–12:00 | Theory: GTDB, KEGG, Pfam, CAZymes, BGCs |
-| Tuesday | 13:15–16:00 | Practical: taxonomy and functional annotation |
-| Friday | 09:15–10:30 | Practical (continued) |
-| Friday | 10:45–12:00 | Guest lecture |
-
 ## Learning objectives
 
 - Assess MAG quality (completeness, contamination)
