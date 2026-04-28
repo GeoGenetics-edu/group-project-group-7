@@ -1,13 +1,13 @@
 # NBIB25004U — Metagenomics Analyses for Microbiomes 2026
 
-## Group _N_
+## Group 7
 
 | Member | KU-ID |
 |--------|-------|
-| _Name_ | _abc123_ |
-| _Name_ | _abc123_ |
-| _Name_ | _abc123_ |
-| _Name_ | _abc123_ |
+| Ellen | _abc123_ |
+| Rikke| _abc123_ |
+| Frederik | _abc123_ |
+| Alba | qzd965 |
 
 ## Links
 
