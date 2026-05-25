@@ -1,0 +1,1 @@
+print("Vi smadrer denne aflevering og det hele bliver slay")
