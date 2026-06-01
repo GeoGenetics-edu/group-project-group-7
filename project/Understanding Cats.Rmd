@@ -32,6 +32,7 @@ file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2
 Cats <- readRDS(file_path)
 
 Cats_ps <- Cats$phyloseq
+
 ```
 
 
@@ -47,12 +48,9 @@ nms <- sample_names(Cats_ps)
 countries <- sub("_.*", "", nms)
 
 table(countries)
-
-
-Cats_ps %>%
-  count(location, origin)
-
 ```
+
+
 ```{r}
 
 df <- data.frame(sample_data(Cats_ps))   
@@ -61,6 +59,7 @@ df %>%
   count(location, origin) %>%
   pivot_wider(names_from = origin, values_from = n, values_fill = 0)
 ```
+
 ## Relative Aboundance for microbiomes
 ```{r}
 ps_rel <- transform_sample_counts(Cats_ps, function(x) x / sum(x))
@@ -77,6 +76,8 @@ plot_bar(ps_genus, fill = "genus") +
   theme_bw() +
   theme(axis.text.x = element_blank())
 ```
+
+
 ## Count taxas
 ```{r}
 ps_rel

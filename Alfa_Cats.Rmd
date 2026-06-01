@@ -1,4 +1,4 @@
----
+Keep this script. Make a last section that comepares all the test to eachother, test by test but comparing methords ---
 title: "Alfa_Cats"
 author: "Frederik Hilbert"
 date: "2026-05-29"
@@ -38,8 +38,8 @@ Cats_ps
 ```
 
 
-## Alfa Diversitet All methords 
-### Shannon
+# Alfa Diversitet All methords 
+## Shannon
 
 ```{r calculate-shannon}
 # Calculate Shannon diversity for all samples
@@ -51,7 +51,7 @@ shannon <- estimate_richness(
 head(shannon)
 ```
 
-
+## Plotting shannon
 
 ```{r plot-shannon-basic, fig.width=8, fig.height=5}
 plot_richness(
@@ -60,7 +60,7 @@ plot_richness(
 )
 ```
 
-
+## Shannon richness by origin
 ```{r plot-shannon-by-body-site, fig.width=9, fig.height=5}
 plot_richness(
   Cats_ps,
@@ -68,7 +68,7 @@ plot_richness(
   x = "origin"
 )
 ```
-
+## Building Alfa Diversity
 ```{r build-alpha-diversity-table}
 ps_pa <- transform_sample_counts(Cats_ps, function(x) {ifelse(x > 0, 1, 0)})
 
@@ -102,10 +102,11 @@ alpha_diversity <- inner_join(
     by = "sample_id"
   )
 ```
+## Sanity check
 ```{r}
 head(alpha_diversity)
 ```
-
+## Kurskal on Shannon Location
 ```{r kruskal-shannon}
 kruskal_shannon <- kruskal.test(
   Shannon ~ location,
@@ -114,6 +115,7 @@ kruskal_shannon <- kruskal.test(
 
 kruskal_shannon
 ```
+## Kurskal on Shannon Origin
 ```{r kruskal-shannon}
 kruskal_shannon <- kruskal.test(
   Shannon ~ origin,
@@ -122,6 +124,7 @@ kruskal_shannon <- kruskal.test(
 
 kruskal_shannon
 ```
+## Pairwise wilcoxon on location Shannon
 
 ```{r pairwise-wilcoxon-shannon}
 pw_shannon <- pairwise.wilcox.test(
@@ -132,7 +135,7 @@ pw_shannon <- pairwise.wilcox.test(
 
 pw_shannon
 ```
-
+## Boxplot by location Shannon
 ```{r shannon-boxplot, fig.width=8, fig.height=5}
 ggplot(alpha_diversity, aes(x = location, y = Shannon)) +
   geom_boxplot() +
@@ -140,7 +143,7 @@ ggplot(alpha_diversity, aes(x = location, y = Shannon)) +
   theme_bw()
 ```
 
-
+## Spearman Depth on Shannon
 ```{r spearman-depth-shannon}
 cor.test(
   alpha_diversity$Observed,
@@ -148,8 +151,8 @@ cor.test(
   method = "spearman"
 )
 ```
-## Observed richness
 
+# Observed Richness (OR)
 ```{r}
 # Calculate Observed richness for all samples
 observed <- estimate_richness(
@@ -159,11 +162,12 @@ observed <- estimate_richness(
 
 head(observed)
 ```
-
+## Plot OR  
 ```{r}
 plot_richness(ps_pa, measures = "Observed")
 ```
 
+## Building Alfa Diversity OR
 ```{r}
 # Extract sample metadata
 sample_df <- sample_data(Cats_ps) %>%
@@ -181,6 +185,7 @@ alpha_observed <- observed %>%
 head(alpha_observed)
 ```
 
+## Kurskal Location OR
 ```{r}
 kruskal_obs_location <- kruskal.test(
   Observed ~ location,
@@ -190,6 +195,7 @@ kruskal_obs_location <- kruskal.test(
 kruskal_obs_location
 ```
 
+## Kurskal Origin OR
 ```{r}
 kruskal_obs_origin <- kruskal.test(
   Observed ~ origin,
@@ -199,6 +205,7 @@ kruskal_obs_origin <- kruskal.test(
 kruskal_obs_origin
 ```
 
+## Pairwise wilcox OR
 ```{r}
 pw_observed <- pairwise.wilcox.test(
   x = alpha_observed$Observed,
@@ -209,6 +216,7 @@ pw_observed <- pairwise.wilcox.test(
 pw_observed
 ```
 
+## Boxplot OR
 ```{r}
 ggplot(alpha_observed, aes(x = location, y = Observed)) +
   geom_boxplot() +
@@ -216,11 +224,10 @@ ggplot(alpha_observed, aes(x = location, y = Observed)) +
   theme_bw()
 ```
 
-## Phylogentic Diversity (PD)
-
+# Phylogentic Diversity (PD)
+## Builidng different format to use Data
 ```{r}
-# Faith's PD requires samples to be rows in the matrix
-otu_mat <- as(otu_table(Cats_ps), "matrix")
+otu_mat <- as(otu_table(Cats_ps), "matrix") # Faith's PD requires samples to be rows in the matrix
 if (taxa_are_rows(Cats_ps)) {
   otu_mat <- t(otu_mat)
 }
@@ -231,6 +238,7 @@ pd_calculated <- pd(otu_mat, phy_tree(Cats_ps), include.root = FALSE)
 head(pd_calculated)
 ```
 
+## Points for PD by sample
 ```{r}
 # Creating an alpha dataframe specifically for the basic plots
 pd_basic_df <- pd_calculated %>% 
@@ -243,7 +251,7 @@ ggplot(pd_basic_df, aes(x = sample_id, y = PD)) +
   theme(axis.text.x = element_text(angle = 90, vtext = 0.5, hjust = 1)) +
   labs(x = "Samples", y = "Phylogenetic Diversity (PD)")
 ```
-
+## Points of PD by origin
 ```{r}
 ggplot(pd_basic_df, aes(x = origin, y = PD)) +
   geom_point(position = position_jitter(width = 0.1)) +
@@ -251,6 +259,7 @@ ggplot(pd_basic_df, aes(x = origin, y = PD)) +
   labs(x = "origin", y = "Phylogenetic Diversity (PD)")
 ```
 
+## PD calculate Alfa
 ```{r}
 # Combine PD estimates and metadata
 alpha_pd <- pd_calculated %>%
@@ -263,6 +272,8 @@ alpha_pd <- pd_calculated %>%
 head(alpha_pd)
 ```
 
+
+## Kurskal PD by location
 ```{r}
 kruskal_pd_location <- kruskal.test(
   PD ~ location,
@@ -272,6 +283,7 @@ kruskal_pd_location <- kruskal.test(
 kruskal_pd_location
 ```
 
+## Kurskal PD by origin
 ```{r}
 kruskal_pd_origin <- kruskal.test(
   PD ~ origin,
@@ -281,6 +293,8 @@ kruskal_pd_origin <- kruskal.test(
 kruskal_pd_origin
 ```
 
+
+## Pairwise PD by location
 ```{r}
 pw_pd <- pairwise.wilcox.test(
   x = alpha_pd$PD,
@@ -291,6 +305,8 @@ pw_pd <- pairwise.wilcox.test(
 pw_pd
 ```
 
+
+## Boxplot PD
 ```{r}
 ggplot(alpha_pd, aes(x = location, y = PD)) +
   geom_boxplot() +
@@ -299,6 +315,7 @@ ggplot(alpha_pd, aes(x = location, y = PD)) +
   labs(y = "Phylogenetic Diversity (PD)")
 ```
 
+## Cortest by PD
 ```{r}
 cor.test(
   alpha_pd$SR,
@@ -307,4 +324,105 @@ cor.test(
 )
 ```
 
+```{r}
+library(phyloseq)
+library(vegan)
+library(dplyr)
+library(tibble)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(ggh4x)
+library(lme4)
+library(lmerTest)
+library(broom.mixed)
+library(lme4)
+library(picante)
+```
 
+## Loading data
+
+```{r Loading Data}
+file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2026/group-project-group-7/project/data/molecular_ecology_17695.rds"
+
+Cats <- readRDS(file_path)
+
+Cats_ps <- Cats$phyloseq
+Cats_ps
+```
+
+# Comparison Across Alpha Diversity Methods
+
+## Combine all metrics into long format
+```{r combine-metrics}
+alpha_combined <- alpha_diversity %>%
+  select(sample_id, location, origin, Shannon, Observed) %>%
+  inner_join(alpha_pd %>% select(sample_id, PD), by = "sample_id") %>%
+  pivot_longer(
+    cols = c(Shannon, Observed, PD),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+head(alpha_combined)
+```
+
+## Kruskal-Wallis test for each metric (Location)
+```{r kruskal-compare-location}
+kruskal_results_location <- alpha_combined %>%
+  group_by(metric) %>%
+  summarise(
+    p_value = kruskal.test(value ~ location)$p.value
+  )
+
+kruskal_results_location
+```
+
+## Kruskal-Wallis test for each metric (Origin)
+```{r kruskal-compare-origin}
+kruskal_results_origin <- alpha_combined %>%
+  group_by(metric) %>%
+  summarise(
+    p_value = kruskal.test(value ~ origin)$p.value
+  )
+
+kruskal_results_origin
+```
+
+## Pairwise Wilcoxon comparison (Location, per metric)
+```{r pairwise-compare-location}
+pairwise_results <- alpha_combined %>%
+  group_by(metric) %>%
+  group_map(~ pairwise.wilcox.test(
+    x = .x$value,
+    g = .x$location,
+    p.adjust.method = "BH"
+  ))
+
+names(pairwise_results) <- unique(alpha_combined$metric)
+
+pairwise_results
+```
+
+## Visualization: compare distributions across methods
+```{r compare-boxplots, fig.width=10, fig.height=5}
+ggplot(alpha_combined, aes(x = location, y = value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_bw() +
+  labs(y = "Alpha Diversity", x = "Location")
+```
+
+## Interpretation helper
+```{r interpretation-table}
+comparison_summary <- kruskal_results_location %>%
+  rename(location_p = p_value) %>%
+  inner_join(
+    kruskal_results_origin %>% rename(origin_p = p_value),
+    by = "metric"
+  )
+
+comparison_summary
+```
