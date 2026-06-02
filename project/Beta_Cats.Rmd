@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ```{r load-packages}
+library(reshape2)
 library(phyloseq)
 library(vegan)
 library(ggplot2)
@@ -981,8 +982,6 @@ pairwise_wunifrac$matrix
 ```
 ## Print all matrix in one
 ```{r}
-
-
 plot_matrix <- function(mat, title) {
   df <- melt(mat, na.rm = TRUE)
   ggplot(df, aes(Var1, Var2, fill = value)) +

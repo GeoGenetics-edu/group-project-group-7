@@ -109,7 +109,7 @@ alpha_diversity <- inner_join(
 head(alpha_diversity)
 ```
 ## Kurskal on Shannon Location
-```{r kruskal-shannon}
+```{r}
 kruskal_shannon <- kruskal.test(
   Shannon ~ location,
   data = alpha_diversity
@@ -118,7 +118,7 @@ kruskal_shannon <- kruskal.test(
 kruskal_shannon
 ```
 ## Kurskal on Shannon Origin
-```{r kruskal-shannon}
+```{r}
 kruskal_shannon <- kruskal.test(
   Shannon ~ origin,
   data = alpha_diversity
@@ -326,33 +326,8 @@ cor.test(
 )
 ```
 
-```{r}
-library(phyloseq)
-library(vegan)
-library(dplyr)
-library(tibble)
-library(purrr)
-library(stringr)
-library(ggplot2)
-library(tidyverse)
-library(ggh4x)
-library(lme4)
-library(lmerTest)
-library(broom.mixed)
-library(lme4)
-library(picante)
-```
 
-## Loading data
 
-```{r Loading Data}
-file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2026/group-project-group-7/project/data/molecular_ecology_17695.rds"
-
-Cats <- readRDS(file_path)
-
-Cats_ps <- Cats$phyloseq
-Cats_ps
-```
 
 # Comparison Across Alpha Diversity Methods
 
