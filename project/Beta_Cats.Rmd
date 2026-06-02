@@ -19,7 +19,8 @@ library(grid)
 ```
 
 ```{r load-data}
-file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2026/group-project-group-7/project/data/molecular_ecology_17695.rds"
+wd <- getwd()
+file_path <-  file.path(wd,"/data/molecular_ecology_17695.rds")
 
 Cats <- readRDS(file_path)
 
@@ -499,7 +500,7 @@ plot(dispersion_unifrac_location)
 ```{r permanova-unifrac-subset}
 ps_pa_unifrac_subset <- subset_samples(
   ps_pa,
-  location %in% c("Denmark", "Spain")
+  location %in% c("Brazil", "Spain")
 )
 
 unifrac_dist_subset <- distance(
@@ -606,7 +607,7 @@ plot_ordination(
 
 ```{r permanova-weighted-unifrac-location}
 adonis_wunifrac_location <- adonis2(
-  wunifrac_dist ~ location,
+  wunifrac_dist ~ origin,
   data = sample_df,
   permutations = 999
 )
@@ -852,5 +853,4 @@ plot(dispersion_wunifrac_location, main = "Weighted UniFrac: location")
 par(old_par)
 ```
 
-```
 

@@ -29,7 +29,9 @@ library(picante)
 ## Loading data
 
 ```{r Loading Data}
-file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2026/group-project-group-7/project/data/molecular_ecology_17695.rds"
+wd <- getwd()
+file_path <- paste0(wd, "/data/molecular_ecology_17695.rds")
+
 
 Cats <- readRDS(file_path)
 
