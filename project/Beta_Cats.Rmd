@@ -193,7 +193,7 @@ plot(dispersion_bray_location)
 ```{r permanova-bray-subset}
 ps_rel_bray_subset <- subset_samples(
   ps_rel,
-  location %in% c("Denmark", "Malaysia")
+  location %in% c("Spain", "Brazil")
 )
 
 bray_dist_subset <- distance(
@@ -851,6 +851,155 @@ plot(dispersion_unifrac_location, main = "Unweighted UniFrac: location")
 plot(dispersion_wunifrac_location, main = "Weighted UniFrac: location")
 
 par(old_par)
+```
+
+# Create pairwise permanova matrix small scripts
+```{r}
+pairwise_permanova_matrix <- function(dist_obj, metadata, group_var, groups_keep) {
+  
+  # Ensure rownames exist
+  metadata <- metadata
+  metadata <- metadata[rownames(metadata) %in% rownames(as.matrix(dist_obj)), ]
+  
+  # Subset metadata correctly
+  meta_sub <- metadata %>%
+    dplyr::filter(.data[[group_var]] %in% groups_keep) %>%
+    droplevels()
+  
+  # Subset distance matrix using matching samples
+  dist_mat <- as.matrix(dist_obj)
+  dist_sub <- dist_mat[rownames(meta_sub), rownames(meta_sub)]
+  
+  groups <- unique(meta_sub[[group_var]])
+  
+  results <- data.frame()
+  
+  for (i in 1:(length(groups)-1)) {
+    for (j in (i+1):length(groups)) {
+      
+      g1 <- groups[i]
+      g2 <- groups[j]
+      
+      pair_meta <- meta_sub %>%
+        dplyr::filter(.data[[group_var]] %in% c(g1, g2))
+      
+      pair_samples <- rownames(pair_meta)
+      pair_dist <- dist_sub[pair_samples, pair_samples]
+      pair_dist <- as.dist(pair_dist)
+      
+      # Build formula safely
+      form <- as.formula(paste("pair_dist ~", group_var))
+      
+      perm <- adonis2(
+        form,
+        data = pair_meta,
+        permutations = 999
+      )
+      
+      results <- rbind(
+        results,
+        data.frame(
+          group1 = g1,
+          group2 = g2,
+          R2 = perm$R2[1],
+          p = perm$`Pr(>F)`[1]
+        )
+      )
+    }
+  }
+  
+  # Adjust p-values
+  results$p_adj <- p.adjust(results$p, method = "BH")
+  
+  # Create symmetric matrix
+  mat <- matrix(NA, nrow = length(groups), ncol = length(groups))
+  rownames(mat) <- colnames(mat) <- groups
+  
+  for (k in 1:nrow(results)) {
+    mat[results$group1[k], results$group2[k]] <- results$p_adj[k]
+    mat[results$group2[k], results$group1[k]] <- results$p_adj[k]
+  }
+  
+  return(list(table = results, matrix = mat))
+}
+
+```
+## Locations in vector
+```{r}
+locations_of_interest <- c(
+  "Spain", "Brazil", "Malaysia",
+  "Denmark", "Carbo Verde", "Aruba"
+)
+```
+## Pairwise test for bray dist
+```{r}
+pairwise_bray <- pairwise_permanova_matrix(
+  bray_dist,
+  sample_df,
+  "location",
+  locations_of_interest
+)
+
+pairwise_bray$table
+pairwise_bray$matrix
+```
+## Pairwise test for Jaccard
+```{r}
+pairwise_jaccard <- pairwise_permanova_matrix(
+  jaccard_dist,
+  sample_df,
+  "location",
+  locations_of_interest
+)
+
+pairwise_jaccard$table
+pairwise_jaccard$matrix
+```
+## Pairwise test for unweighted UniFrac
+```{r}
+pairwise_unifrac <- pairwise_permanova_matrix(
+  unifrac_dist,
+  sample_df,
+  "location",
+  locations_of_interest
+)
+
+pairwise_unifrac$table
+pairwise_unifrac$matrix
+```
+## Pairwise test for weighted UniFrac
+```{r}
+pairwise_wunifrac <- pairwise_permanova_matrix(
+  wunifrac_dist,
+  sample_df,
+  "location",
+  locations_of_interest
+)
+
+pairwise_wunifrac$table
+pairwise_wunifrac$matrix
+```
+## Print all matrix in one
+```{r}
+
+
+plot_matrix <- function(mat, title) {
+  df <- melt(mat, na.rm = TRUE)
+  ggplot(df, aes(Var1, Var2, fill = value)) +
+    geom_tile() +
+    geom_text(aes(label = round(value, 3))) +
+    scale_fill_gradient(low = "white", high = "red") +
+    theme_minimal() +
+    labs(title = title, x = "", y = "", fill = "Adj p")
+}
+
+p1 <- plot_matrix(pairwise_bray$matrix, "Bray-Curtis PERMANOVA")
+p2 <- plot_matrix(pairwise_jaccard$matrix, "Jaccard PERMANOVA")
+p3 <- plot_matrix(pairwise_unifrac$matrix, "Unweighted UniFrac PERMANOVA")
+p4 <- plot_matrix(pairwise_wunifrac$matrix, "Weighted UniFrac PERMANOVA")
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+
 ```
 
 
