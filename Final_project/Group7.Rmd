@@ -1,0 +1,446 @@
+---
+title: "Reproduced analyses from project report"
+output: html_document
+date: "2026-06-04"
+---
+
+```{r setup, include=FALSE}
+# ---------------------------
+# AUTO-INSTALL MISSING PACKAGES
+# ---------------------------
+required_packages <- c(
+  "phyloseq", "vegan", "dplyr", "tibble", "purrr", "stringr",
+  "ggplot2", "tidyverse", "ggh4x", "picante", "reshape2",
+  "gridExtra", "grid", "lme4", "lmerTest", "broom.mixed"
+)
+
+missing <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+if(length(missing) > 0) {
+  install.packages(missing, dependencies = TRUE)
+}
+
+# Load all libraries
+invisible(lapply(required_packages, library, character.only = TRUE))
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+1. Load libraries and data
+```{r}
+library(phyloseq)
+library(vegan)
+library(dplyr)
+library(tibble)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(ggh4x)
+library(picante)
+library(reshape2)
+library(gridExtra)
+library(grid)
+
+wd <- getwd()
+file_path <- file.path(wd, "data", "molecular_ecology_17695.rds")
+Cats <- readRDS(file_path)
+Cats_ps <- Cats$phyloseq
+sample_df <- sample_data(Cats_ps) %>% data.frame()
+```
+
+
+2. Table 1: Sample counts per location and origin
+
+```{r}
+
+table1 <- sample_df %>% 
+  count(location, origin) %>%
+  pivot_wider(names_from = origin, values_from = n, values_fill = 0)
+knitr::kable(table1, caption = "Table 1: Number of samples by location and origin")
+
+```
+
+3. Figure 2: Relative abundance bar plot (genus level)
+
+```{r}
+ps_rel <- transform_sample_counts(Cats_ps, function(x) x / sum(x))
+ps_genus <- tax_glom(ps_rel, taxrank = "genus")
+plot_bar(ps_genus, fill = "genus") +
+  facet_nested(~ location + origin, scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_blank(), legend.position = "none") +
+  labs(title = "Figure 2: Relative abundance of genera", 
+       x = "Sample (by location and origin)", y = "Relative abundance")
+
+```
+
+Figure 3: MAG completness vs comtamination
+
+```{r}
+Cats_mag <- Cats$mag_info
+ggplot(Cats_mag, aes(x = contamination, y = completeness)) +
+  geom_point() +
+  xlim(0, 8) + ylim(0, 100) +
+  labs(x = "Contamination (%)", y = "Completeness (%)",
+       title = "Figure 3: Scatterplot of MAG quality") +
+  theme_bw()
+
+```
+
+Alpha diversity
+
+Calculate Shannon, Observed richnedd and Faith's PD
+
+```{r}
+ps_pa <- transform_sample_counts(Cats_ps, function(x) ifelse(x > 0, 1, 0))
+
+shannon <- estimate_richness(Cats_ps, measures = "Shannon") %>%
+  rownames_to_column("sample_id")
+observed <- estimate_richness(ps_pa, measures = "Observed") %>%
+  rownames_to_column("sample_id")
+
+otu_mat <- as(otu_table(Cats_ps), "matrix")
+if (taxa_are_rows(Cats_ps)) otu_mat <- t(otu_mat)
+pd_val <- pd(otu_mat, phy_tree(Cats_ps), include.root = FALSE) %>%
+  rownames_to_column("sample_id") %>% select(sample_id, PD, SR)
+
+alpha_all <- inner_join(shannon, observed, by = "sample_id") %>%
+  inner_join(pd_val, by = "sample_id") %>%
+  inner_join(sample_df %>% rownames_to_column("sample_id"), by = "sample_id")
+
+alpha_long <- alpha_all %>%
+  select(sample_id, location, origin, Shannon, Observed, PD) %>%
+  pivot_longer(cols = c(Shannon, Observed, PD), names_to = "metric", values_to = "value")
+
+```
+
+Table 2: Kruskal-Wallis p-valuse by location and origin
+```{r}
+kruskal_loc <- alpha_long %>%
+  group_by(metric) %>%
+  summarise(p_location = kruskal.test(value ~ location)$p.value)
+kruskal_orig <- alpha_long %>%
+  group_by(metric) %>%
+  summarise(p_origin = kruskal.test(value ~ origin)$p.value)
+table2 <- inner_join(kruskal_loc, kruskal_orig, by = "metric")
+knitr::kable(table2, caption = "Table 2: Kruskal‑Wallis p‑values for alpha diversity metrics", digits = 4)
+```
+
+Figure 4: Boxplot comparison across methods
+```{r}
+ggplot(alpha_long, aes(x = location, y = value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_bw() +
+  labs(y = "Alpha diversity", x = "Location", title = "Figure 4: Alpha diversity by location")
+``` 
+
+
+Beta diversity
+
+Distance matrices
+```{r}
+bray_dist <- distance(ps_rel, method = "bray")
+jaccard_dist <- distance(ps_pa, method = "jaccard")
+unifrac_dist <- distance(ps_pa, method = "unifrac", weighted = FALSE)
+wunifrac_dist <- distance(ps_rel, method = "unifrac", weighted = TRUE)
+```
+
+PCoA ordinations and variance explained (Table 3)
+```{r}
+ord_bray <- ordinate(ps_rel, method = "PCoA", distance = bray_dist)
+ord_jaccard <- ordinate(ps_pa, method = "PCoA", distance = jaccard_dist)
+ord_unifrac <- ordinate(ps_pa, method = "PCoA", distance = unifrac_dist)
+ord_wunifrac <- ordinate(ps_rel, method = "PCoA", distance = wunifrac_dist)
+
+get_var_exp <- function(ord) {
+  eig <- ord$values$Eigenvalues
+  var_exp <- eig / sum(eig)
+  data.frame(Axis = paste0("Axis.", 1:2), 
+             Variance = round(var_exp[1:2], 4),
+             Cumulative = round(cumsum(var_exp)[1:2], 4))
+}
+var_df <- rbind(
+  cbind(Method = "Bray-Curtis", get_var_exp(ord_bray)),
+  cbind(Method = "Jaccard", get_var_exp(ord_jaccard)),
+  cbind(Method = "Unweighted UniFrac", get_var_exp(ord_unifrac)),
+  cbind(Method = "Weighted UniFrac", get_var_exp(ord_wunifrac))
+)
+knitr::kable(var_df, caption = "Table 3: Variance explained by first two PCoA axes")
+```
+
+Figure 5: Dispersion plots by origin (2x2 layout)
+``` {r}
+disp_bray_origin <- betadisper(bray_dist, sample_df$origin)
+disp_jaccard_origin <- betadisper(jaccard_dist, sample_df$origin)
+disp_unifrac_origin <- betadisper(unifrac_dist, sample_df$origin)
+disp_wunifrac_origin <- betadisper(wunifrac_dist, sample_df$origin)
+
+# Set smaller margins and 2x2 layout
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+plot(disp_bray_origin, main = "Bray-Curtis: origin")
+plot(disp_jaccard_origin, main = "Jaccard: origin")
+plot(disp_unifrac_origin, main = "Unweighted UniFrac: origin")
+plot(disp_wunifrac_origin, main = "Weighted UniFrac: origin")
+par(mfrow = c(1, 1))  # reset
+```
+
+Figure 6: Dispersion plots by location (2x2 layout)
+``` {r}
+disp_bray_loc <- betadisper(bray_dist, sample_df$location)
+disp_jaccard_loc <- betadisper(jaccard_dist, sample_df$location)
+disp_unifrac_loc <- betadisper(unifrac_dist, sample_df$location)
+disp_wunifrac_loc <- betadisper(wunifrac_dist, sample_df$location)
+
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+plot(disp_bray_loc, main = "Bray-Curtis: location")
+plot(disp_jaccard_loc, main = "Jaccard: location")
+plot(disp_unifrac_loc, main = "Unweighted UniFrac: location")
+plot(disp_wunifrac_loc, main = "Weighted UniFrac: location")
+par(mfrow = c(1, 1))
+```
+Figure 7: NMDS ordinations (2x2)
+``` {r}
+ord_nmds_bray <- ordinate(ps_rel, method = "NMDS", distance = bray_dist)
+ord_nmds_jaccard <- ordinate(ps_pa, method = "NMDS", distance = jaccard_dist)
+ord_nmds_unifrac <- ordinate(ps_pa, method = "NMDS", distance = unifrac_dist)
+ord_nmds_wunifrac <- ordinate(ps_rel, method = "NMDS", distance = wunifrac_dist)
+
+p1 <- plot_ordination(ps_rel, ord_nmds_bray, color = "location", shape = "origin") +
+  geom_point(size = 3) + theme_bw() + ggtitle("Bray-Curtis")
+p2 <- plot_ordination(ps_pa, ord_nmds_jaccard, color = "location", shape = "origin") +
+  geom_point(size = 3) + theme_bw() + ggtitle("Jaccard")
+p3 <- plot_ordination(ps_pa, ord_nmds_unifrac, color = "location", shape = "origin") +
+  geom_point(size = 3) + theme_bw() + ggtitle("Unweighted UniFrac")
+p4 <- plot_ordination(ps_rel, ord_nmds_wunifrac, color = "location", shape = "origin") +
+  geom_point(size = 3) + theme_bw() + ggtitle("Weighted UniFrac")
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+PERMANOVA results (reported in text)
+``` {r}
+adonis_bray_loc <- adonis2(bray_dist ~ location, data = sample_df, permutations = 999)
+adonis_bray_orig <- adonis2(bray_dist ~ origin, data = sample_df, permutations = 999)
+adonis_jaccard_loc <- adonis2(jaccard_dist ~ location, data = sample_df, permutations = 999)
+adonis_unifrac_loc <- adonis2(unifrac_dist ~ location, data = sample_df, permutations = 999)
+adonis_wunifrac_loc <- adonis2(wunifrac_dist ~ location, data = sample_df, permutations = 999)
+
+cat("Bray-Curtis ~ location:\n"); print(adonis_bray_loc)
+cat("\nBray-Curtis ~ origin:\n"); print(adonis_bray_orig)
+cat("\nJaccard ~ location:\n"); print(adonis_jaccard_loc)
+cat("\nUnweighted UniFrac ~ location:\n"); print(adonis_unifrac_loc)
+cat("\nWeighted UniFrac ~ location:\n"); print(adonis_wunifrac_loc)
+```
+
+Figure 8: Pairwise PERMANOVA matrices (2x2)
+```{r}
+pairwise_permanova_matrix <- function(dist_obj, metadata, group_var, groups_keep) {
+  metadata <- metadata[rownames(metadata) %in% rownames(as.matrix(dist_obj)), ]
+  meta_sub <- metadata %>% filter(.data[[group_var]] %in% groups_keep) %>% droplevels()
+  dist_mat <- as.matrix(dist_obj)
+  dist_sub <- dist_mat[rownames(meta_sub), rownames(meta_sub)]
+  groups <- unique(meta_sub[[group_var]])
+  results <- data.frame()
+  for (i in 1:(length(groups)-1)) {
+    for (j in (i+1):length(groups)) {
+      g1 <- groups[i]; g2 <- groups[j]
+      pair_meta <- meta_sub %>% filter(.data[[group_var]] %in% c(g1, g2))
+      pair_samples <- rownames(pair_meta)
+      pair_dist <- as.dist(dist_sub[pair_samples, pair_samples])
+      perm <- adonis2(as.formula(paste("pair_dist ~", group_var)), data = pair_meta, permutations = 999)
+      results <- rbind(results, data.frame(group1 = g1, group2 = g2, R2 = perm$R2[1], p = perm$`Pr(>F)`[1]))
+    }
+  }
+  results$p_adj <- p.adjust(results$p, method = "BH")
+  mat <- matrix(NA, nrow = length(groups), ncol = length(groups), dimnames = list(groups, groups))
+  for (k in 1:nrow(results)) {
+    mat[results$group1[k], results$group2[k]] <- results$p_adj[k]
+    mat[results$group2[k], results$group1[k]] <- results$p_adj[k]
+  }
+  return(mat)
+}
+
+locations <- c("Spain", "Brazil", "Malaysia", "Denmark", "Carbo Verde", "Aruba")
+mat_bray <- pairwise_permanova_matrix(bray_dist, sample_df, "location", locations)
+mat_jaccard <- pairwise_permanova_matrix(jaccard_dist, sample_df, "location", locations)
+mat_unifrac <- pairwise_permanova_matrix(unifrac_dist, sample_df, "location", locations)
+mat_wunifrac <- pairwise_permanova_matrix(wunifrac_dist, sample_df, "location", locations)
+
+plot_matrix <- function(mat, title) {
+  df <- melt(mat, na.rm = TRUE)
+  ggplot(df, aes(Var1, Var2, fill = value)) +
+    geom_tile() + geom_text(aes(label = round(value, 3))) +
+    scale_fill_gradient(low = "white", high = "red") +
+    theme_minimal() + labs(title = title, x = "", y = "", fill = "Adj p")
+}
+p_bray <- plot_matrix(mat_bray, "Bray-Curtis")
+p_jaccard <- plot_matrix(mat_jaccard, "Jaccard")
+p_unifrac <- plot_matrix(mat_unifrac, "Unweighted UniFrac")
+p_wunifrac <- plot_matrix(mat_wunifrac, "Weighted UniFrac")
+
+grid.arrange(p_bray, p_jaccard, p_unifrac, p_wunifrac, ncol = 2)
+```
+
+Figures 9-13??? 
+(zero inflation, top enriched taxa, volcano plot, RDA)
+
+Det her bare et udkast skal lige havde jeg tænkter
+
+Figure 9: Zero-inflation plot
+
+```{r}
+# Calculate proportion of zeros for each taxon across all samples
+otu_rel <- as(otu_table(ps_rel), "matrix")
+if (taxa_are_rows(ps_rel)) otu_rel <- t(otu_rel)   # samples as rows, taxa as columns
+
+zero_prop <- apply(otu_rel, 2, function(x) mean(x == 0))
+
+zero_df <- data.frame(proportion_zeros = zero_prop)
+
+ggplot(zero_df, aes(x = proportion_zeros)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black") +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  labs(x = "Proportion of samples with zero abundance", 
+       y = "Number of taxa",
+       title = "Figure 9: Zero inflation of taxa") +
+  theme_bw()
+```
+
+Figure 11: Top enriched taxa (domestic vs feral) per country
+This figure shows, for each country, the five taxa with the smallest p‑value from a Wilcoxon test comparing domestic vs feral cats.
+```{r}
+# Extract metadata (only essential columns to avoid name clashes)
+meta <- sample_df %>% 
+  rownames_to_column("sample_id") %>%
+  select(sample_id, location, origin)   # keep only needed columns
+
+# Relative abundance matrix (samples as rows)
+rel_abund <- as(otu_table(ps_rel), "matrix")
+if (taxa_are_rows(ps_rel)) rel_abund <- t(rel_abund)
+
+# Get taxon names (try genus, else OTU)
+tax_mat <- tax_table(ps_rel) %>% as.data.frame()
+if (nrow(tax_mat) == ncol(rel_abund)) {
+  if ("genus" %in% colnames(tax_mat)) {
+    taxon_names <- ifelse(is.na(tax_mat$genus) | tax_mat$genus == "", 
+                          paste0("OTU_", rownames(tax_mat)), 
+                          tax_mat$genus)
+  } else {
+    taxon_names <- rownames(tax_mat)
+  }
+} else {
+  taxon_names <- colnames(rel_abund)
+}
+# Ensure unique names (fixes duplicate genus names)
+taxon_names <- make.unique(taxon_names)
+colnames(rel_abund) <- taxon_names
+
+# Convert to long format
+rel_df <- as.data.frame(rel_abund) %>%
+  rownames_to_column("sample_id") %>%
+  pivot_longer(-sample_id, names_to = "taxon", values_to = "abundance") %>%
+  inner_join(meta, by = "sample_id")   # now safe because meta only has sample_id, location, origin
+
+# List of countries
+countries <- unique(meta$location)
+
+# Function to get top 5 taxa for a given country
+get_top_taxa <- function(country_name) {
+  dat <- rel_df %>% filter(location == country_name)
+  # Remove taxa that are all zero in this country
+  nonzero_taxa <- dat %>% group_by(taxon) %>% summarise(max_ab = max(abundance)) %>% filter(max_ab > 0) %>% pull(taxon)
+  if (length(nonzero_taxa) == 0) return(character(0))
+  dat <- dat %>% filter(taxon %in% nonzero_taxa)
+  
+  # Wilcoxon test per taxon
+  pvals <- dat %>%
+    group_by(taxon) %>%
+    summarise(
+      p = tryCatch(wilcox.test(abundance ~ origin)$p.value, error = function(e) 1),
+      logFC = log2(mean(abundance[origin == "Domestic"] + 1e-6) / 
+                   mean(abundance[origin == "Feral"] + 1e-6)),
+      .groups = "drop"
+    ) %>%
+    arrange(p)
+  
+  # Return top 5 (or fewer if not enough taxa)
+  head(pvals, 5) %>% pull(taxon)
+}
+
+# Get top taxa for each country
+top_taxa_per_country <- lapply(setNames(countries, countries), get_top_taxa)
+
+# Keep only those taxa for their respective country
+plot_data <- rel_df %>%
+  rowwise() %>%
+  filter(taxon %in% top_taxa_per_country[[location]]) %>%
+  ungroup()
+
+# If no data, skip plot
+if (nrow(plot_data) == 0) {
+  cat("No significant taxa found for any country.\n")
+} else {
+  # Plot
+  ggplot(plot_data, aes(x = taxon, y = abundance, fill = origin)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(position = position_jitterdodge(jitter.width = 0.2), alpha = 0.6, size = 1) +
+    facet_wrap(~ location, scales = "free_x", ncol = 2) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(x = "Taxon", y = "Relative abundance", 
+         fill = "Origin",
+         title = "Figure 11: Top 5 enriched taxa (lowest p‑value) for each country")
+}
+```
+
+Vocano plot: log2 fold change vs significance (per country)
+This volcano plot displays, for each country, every taxon tested (domestic vs feral).
+
+x‑axis: log₂ fold change (positive = higher in domestic cats, negative = higher in feral cats).
+
+y‑axis: –log₁₀(p‑value) from Wilcoxon test.
+
+Dashed horizontal line: significance threshold (p = 0.05).
+
+Points in red are significant (p < 0.05).
+The facet layout helps identify countries with stronger domestication signals (e.g., Brazil in the original report).
+Note: The code adds a small pseudocount (1e-6) to avoid division by zero when calculating fold changes.
+
+```{r}
+# Compute per country and per taxon
+volcano_data <- rel_df %>%
+  group_by(location, taxon) %>%
+  summarise(
+    mean_dom = mean(abundance[origin == "Domestic"], na.rm = TRUE),
+    mean_fer = mean(abundance[origin == "Feral"], na.rm = TRUE),
+    log2FC = log2((mean_dom + 1e-6) / (mean_fer + 1e-6)),
+    p = wilcox.test(abundance ~ origin)$p.value,
+    .groups = "drop"
+  ) %>%
+  mutate(log10p = -log10(p)) %>%
+  filter(is.finite(log2FC))   # remove infinite FC values
+
+# Significance threshold
+sig_threshold <- 0.05
+
+ggplot(volcano_data, aes(x = log2FC, y = log10p, color = p < sig_threshold)) +
+  geom_point(alpha = 0.7, size = 1.5) +
+  geom_hline(yintercept = -log10(sig_threshold), linetype = "dashed", color = "gray50") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_color_manual(values = c("gray70", "red"), 
+                     labels = c("Not significant", paste("Significant (p <", sig_threshold, ")"))) +
+  facet_wrap(~ location, ncol = 2) +
+  theme_bw() +
+  labs(x = expression(log[2]~"fold change (Domestic / Feral)"),
+       y = expression(-log[10]~"p-value"),
+       color = "Significance",
+       title = "Volcano plot: domestic vs feral cats per country") +
+  theme(legend.position = "bottom")
+```
+
+
+
+
