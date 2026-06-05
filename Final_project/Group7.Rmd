@@ -26,7 +26,7 @@ invisible(lapply(required_packages, library, character.only = TRUE))
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
-1. Load libraries and data
+Load libraries and data
 ```{r}
 library(phyloseq)
 library(vegan)
@@ -50,10 +50,9 @@ sample_df <- sample_data(Cats_ps) %>% data.frame()
 ```
 
 
-2. Table 1: Sample counts per location and origin
+Table 1: Sample counts per location and origin
 
 ```{r}
-
 table1 <- sample_df %>% 
   count(location, origin) %>%
   pivot_wider(names_from = origin, values_from = n, values_fill = 0)
@@ -61,7 +60,7 @@ knitr::kable(table1, caption = "Table 1: Number of samples by location and origi
 
 ```
 
-3. Figure 2: Relative abundance bar plot (genus level)
+Figure 2: Relative abundance bar plot (genus level)
 
 ```{r}
 ps_rel <- transform_sample_counts(Cats_ps, function(x) x / sum(x))
@@ -178,13 +177,12 @@ disp_jaccard_origin <- betadisper(jaccard_dist, sample_df$origin)
 disp_unifrac_origin <- betadisper(unifrac_dist, sample_df$origin)
 disp_wunifrac_origin <- betadisper(wunifrac_dist, sample_df$origin)
 
-# Set smaller margins and 2x2 layout
 par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
 plot(disp_bray_origin, main = "Bray-Curtis: origin")
 plot(disp_jaccard_origin, main = "Jaccard: origin")
 plot(disp_unifrac_origin, main = "Unweighted UniFrac: origin")
 plot(disp_wunifrac_origin, main = "Weighted UniFrac: origin")
-par(mfrow = c(1, 1))  # reset
+par(mfrow = c(1, 1))
 ```
 
 Figure 6: Dispersion plots by location (2x2 layout)
@@ -263,7 +261,7 @@ pairwise_permanova_matrix <- function(dist_obj, metadata, group_var, groups_keep
   return(mat)
 }
 
-locations <- c("Spain", "Brazil", "Malaysia", "Denmark", "Carbo Verde", "Aruba")
+locations <- c("Spain", "Brazil", "Malaysia", "Denmark", "CaboVerde", "Aruba")
 mat_bray <- pairwise_permanova_matrix(bray_dist, sample_df, "location", locations)
 mat_jaccard <- pairwise_permanova_matrix(jaccard_dist, sample_df, "location", locations)
 mat_unifrac <- pairwise_permanova_matrix(unifrac_dist, sample_df, "location", locations)
@@ -283,120 +281,122 @@ p_wunifrac <- plot_matrix(mat_wunifrac, "Weighted UniFrac")
 
 grid.arrange(p_bray, p_jaccard, p_unifrac, p_wunifrac, ncol = 2)
 ```
+Preprocessing: relative abundance and long format
 
-Figures 9-13??? 
-(zero inflation, top enriched taxa, volcano plot, RDA)
+```{r}
+## Preprocessing: relative abundance and long format
+ps_rel <- transform_sample_counts(Cats_ps, function(x) x / sum(x))
+otu_rel <- as(otu_table(ps_rel), "matrix")
+if (taxa_are_rows(ps_rel)) otu_rel <- t(otu_rel)
+otu_rel <- as.data.frame(otu_rel)
 
-Det her bare et udkast skal lige havde jeg tænkter
+meta_rel <- as(sample_data(ps_rel), "data.frame")
+
+
+tax_rel <- as.data.frame(tax_table(ps_rel))
+
+# Long format for ggplot and per-taxon tests
+dat_rel <- otu_rel %>%
+  rownames_to_column("sample_id") %>%
+  pivot_longer(-sample_id, names_to = "taxon", values_to = "rel_abund") %>%
+  left_join(meta_rel %>% rownames_to_column("sample_id"), by = "sample_id") %>%
+  left_join(tax_rel %>% rownames_to_column("taxon"), by = "taxon")
+```
+
+
+
 
 Figure 9: Zero-inflation plot
 
 ```{r}
-# Calculate proportion of zeros for each taxon across all samples
-otu_rel <- as(otu_table(ps_rel), "matrix")
-if (taxa_are_rows(ps_rel)) otu_rel <- t(otu_rel)   # samples as rows, taxa as columns
-
-zero_prop <- apply(otu_rel, 2, function(x) mean(x == 0))
-
-zero_df <- data.frame(proportion_zeros = zero_prop)
-
-ggplot(zero_df, aes(x = proportion_zeros)) +
+dat_rel %>%
+  group_by(taxon) %>%
+  summarise(prop_zero = mean(rel_abund == 0), .groups = "drop") %>%
+  ggplot(aes(x = prop_zero)) +
   geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black") +
-  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
   labs(x = "Proportion of samples with zero abundance", 
        y = "Number of taxa",
-       title = "Figure 9: Zero inflation of taxa") +
+       title = "Figure 9: Zero inflation across taxa") +
   theme_bw()
 ```
+
+Wilcoxon rank-sum test (domestic vs feral) per country
+
+``` {r}
+# Function to run Wilcoxon per country
+run_wilcox_per_country <- function(country_name) {
+  dat_rel %>%
+    filter(location == country_name) %>%
+    group_by(taxon, genus, species) %>%
+    summarise(
+      p_value = wilcox.test(rel_abund ~ origin, exact = FALSE)$p.value,
+      mean_domestic = mean(rel_abund[origin == "Domestic"], na.rm = TRUE),
+      mean_feral = mean(rel_abund[origin == "Feral"], na.rm = TRUE),
+      log2_fc = log2((mean_domestic + 1e-6) / (mean_feral + 1e-6)),
+      .groups = "drop"
+    ) %>%
+    mutate(q_value = p.adjust(p_value, method = "BH"),
+           location = country_name)
+}
+
+countries <- unique(dat_rel$location)
+wilcox_results_all <- map_dfr(countries, run_wilcox_per_country)
+
+```
+Figure 10: Top feral-enriched taxa per country
+
+```{r}
+wilcox_feral_enriched_all <- wilcox_results_all %>%
+  group_by(location) %>%
+  arrange(log2_fc, .by_group = TRUE) %>%
+  slice_head(n = 5) %>%
+  ungroup()
+
+feral_plot_data <- wilcox_feral_enriched_all %>%
+  select(location, taxon) %>%
+  inner_join(dat_rel, by = c("location", "taxon")) %>%
+  mutate(facet_label = paste0(location, ": ", taxon))
+
+ggplot(feral_plot_data, aes(x = origin, y = rel_abund, fill = origin)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  facet_wrap(~ facet_label, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = c("Domestic" = "#E74C3C", "Feral" = "#3498DB")) +
+  theme_bw() +
+  labs(x = "Origin", y = "Relative abundance",
+       title = "Figure 10: Top feral‑enriched taxa per country") +
+  theme(strip.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
 
 Figure 11: Top enriched taxa (domestic vs feral) per country
 This figure shows, for each country, the five taxa with the smallest p‑value from a Wilcoxon test comparing domestic vs feral cats.
 ```{r}
-# Extract metadata (only essential columns to avoid name clashes)
-meta <- sample_df %>% 
-  rownames_to_column("sample_id") %>%
-  select(sample_id, location, origin)   # keep only needed columns
-
-# Relative abundance matrix (samples as rows)
-rel_abund <- as(otu_table(ps_rel), "matrix")
-if (taxa_are_rows(ps_rel)) rel_abund <- t(rel_abund)
-
-# Get taxon names (try genus, else OTU)
-tax_mat <- tax_table(ps_rel) %>% as.data.frame()
-if (nrow(tax_mat) == ncol(rel_abund)) {
-  if ("genus" %in% colnames(tax_mat)) {
-    taxon_names <- ifelse(is.na(tax_mat$genus) | tax_mat$genus == "", 
-                          paste0("OTU_", rownames(tax_mat)), 
-                          tax_mat$genus)
-  } else {
-    taxon_names <- rownames(tax_mat)
-  }
-} else {
-  taxon_names <- colnames(rel_abund)
-}
-# Ensure unique names (fixes duplicate genus names)
-taxon_names <- make.unique(taxon_names)
-colnames(rel_abund) <- taxon_names
-
-# Convert to long format
-rel_df <- as.data.frame(rel_abund) %>%
-  rownames_to_column("sample_id") %>%
-  pivot_longer(-sample_id, names_to = "taxon", values_to = "abundance") %>%
-  inner_join(meta, by = "sample_id")   # now safe because meta only has sample_id, location, origin
-
-# List of countries
-countries <- unique(meta$location)
-
-# Function to get top 5 taxa for a given country
-get_top_taxa <- function(country_name) {
-  dat <- rel_df %>% filter(location == country_name)
-  # Remove taxa that are all zero in this country
-  nonzero_taxa <- dat %>% group_by(taxon) %>% summarise(max_ab = max(abundance)) %>% filter(max_ab > 0) %>% pull(taxon)
-  if (length(nonzero_taxa) == 0) return(character(0))
-  dat <- dat %>% filter(taxon %in% nonzero_taxa)
-  
-  # Wilcoxon test per taxon
-  pvals <- dat %>%
-    group_by(taxon) %>%
-    summarise(
-      p = tryCatch(wilcox.test(abundance ~ origin)$p.value, error = function(e) 1),
-      logFC = log2(mean(abundance[origin == "Domestic"] + 1e-6) / 
-                   mean(abundance[origin == "Feral"] + 1e-6)),
-      .groups = "drop"
-    ) %>%
-    arrange(p)
-  
-  # Return top 5 (or fewer if not enough taxa)
-  head(pvals, 5) %>% pull(taxon)
-}
-
-# Get top taxa for each country
-top_taxa_per_country <- lapply(setNames(countries, countries), get_top_taxa)
-
-# Keep only those taxa for their respective country
-plot_data <- rel_df %>%
-  rowwise() %>%
-  filter(taxon %in% top_taxa_per_country[[location]]) %>%
+wilcox_domestic_enriched_all <- wilcox_results_all %>%
+  group_by(location) %>%
+  arrange(desc(log2_fc), .by_group = TRUE) %>%
+  slice_head(n = 5) %>%
   ungroup()
 
-# If no data, skip plot
-if (nrow(plot_data) == 0) {
-  cat("No significant taxa found for any country.\n")
-} else {
-  # Plot
-  ggplot(plot_data, aes(x = taxon, y = abundance, fill = origin)) +
-    geom_boxplot(outlier.shape = NA) +
-    geom_jitter(position = position_jitterdodge(jitter.width = 0.2), alpha = 0.6, size = 1) +
-    facet_wrap(~ location, scales = "free_x", ncol = 2) +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(x = "Taxon", y = "Relative abundance", 
-         fill = "Origin",
-         title = "Figure 11: Top 5 enriched taxa (lowest p‑value) for each country")
-}
+domestic_plot_data <- wilcox_domestic_enriched_all %>%
+  select(location, taxon) %>%
+  inner_join(dat_rel, by = c("location", "taxon")) %>%
+  mutate(facet_label = paste0(location, ": ", taxon))
+
+ggplot(domestic_plot_data, aes(x = origin, y = rel_abund, fill = origin)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  facet_wrap(~ facet_label, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = c("Domestic" = "#E74C3C", "Feral" = "#3498DB")) +
+  theme_bw() +
+  labs(x = "Origin", y = "Relative abundance",
+       title = "Figure 11: Top domestic‑enriched taxa per country") +
+  theme(strip.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-Vocano plot: log2 fold change vs significance (per country)
+Figure 12: Vocano plot: log2 fold change vs significance (per country)
 This volcano plot displays, for each country, every taxon tested (domestic vs feral).
 
 x‑axis: log₂ fold change (positive = higher in domestic cats, negative = higher in feral cats).
@@ -410,36 +410,155 @@ The facet layout helps identify countries with stronger domestication signals (e
 Note: The code adds a small pseudocount (1e-6) to avoid division by zero when calculating fold changes.
 
 ```{r}
-# Compute per country and per taxon
-volcano_data <- rel_df %>%
-  group_by(location, taxon) %>%
-  summarise(
-    mean_dom = mean(abundance[origin == "Domestic"], na.rm = TRUE),
-    mean_fer = mean(abundance[origin == "Feral"], na.rm = TRUE),
-    log2FC = log2((mean_dom + 1e-6) / (mean_fer + 1e-6)),
-    p = wilcox.test(abundance ~ origin)$p.value,
-    .groups = "drop"
+wilcox_results_all %>%
+  mutate(
+    neg_log10_q = -log10(q_value),
+    direction = case_when(
+      q_value < 0.05 & log2_fc > 0 ~ "Domestic-enriched",
+      q_value < 0.05 & log2_fc < 0 ~ "Feral-enriched",
+      TRUE ~ "Not significant"
+    )
   ) %>%
-  mutate(log10p = -log10(p)) %>%
-  filter(is.finite(log2FC))   # remove infinite FC values
-
-# Significance threshold
-sig_threshold <- 0.05
-
-ggplot(volcano_data, aes(x = log2FC, y = log10p, color = p < sig_threshold)) +
-  geom_point(alpha = 0.7, size = 1.5) +
-  geom_hline(yintercept = -log10(sig_threshold), linetype = "dashed", color = "gray50") +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
-  scale_color_manual(values = c("gray70", "red"), 
-                     labels = c("Not significant", paste("Significant (p <", sig_threshold, ")"))) +
-  facet_wrap(~ location, ncol = 2) +
-  theme_bw() +
-  labs(x = expression(log[2]~"fold change (Domestic / Feral)"),
-       y = expression(-log[10]~"p-value"),
-       color = "Significance",
-       title = "Volcano plot: domestic vs feral cats per country") +
-  theme(legend.position = "bottom")
+  ggplot(aes(x = log2_fc, y = neg_log10_q, color = direction)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    scale_color_manual(values = c("Domestic-enriched" = "#E74C3C", 
+                                  "Feral-enriched" = "#3498DB", 
+                                  "Not significant" = "grey60")) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey40") +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+    facet_wrap(~ location, scales = "free") +
+    labs(x = "Log2 fold change (Domestic vs Feral)", 
+         y = "-log10(q-value)", 
+         color = NULL,
+         title = "Figure 12: Volcano plot – domestic vs feral cats per country") +
+    theme_bw() +
+    theme(strip.background = element_rect(fill = "lightgrey"))
 ```
+
+CLR tranformation and RDA
+
+```{r}
+# CLR transformation (pseudocount to avoid log(0))
+cat_data_clr <- transform_sample_counts(Cats_ps, function(x) {
+  x <- x + 1e-9
+  log(x) - mean(log(x))
+})
+
+otu_clr <- as(otu_table(cat_data_clr), "matrix")
+if (taxa_are_rows(cat_data_clr)) otu_clr <- t(otu_clr)
+otu_clr <- as.data.frame(otu_clr)
+meta_clr <- as(sample_data(cat_data_clr), "data.frame")
+
+# RDA: effect of origin while controlling for location
+rda_model <- rda(otu_clr ~ origin + Condition(location), data = meta_clr)
+```
+
+
+Figure 13: RDA1 loadnings (top taxa driving domestic/feral separation)
+```{r}
+# Extract RDA1 loadings for taxa
+taxon_scores <- scores(rda_model, display = "species", choices = 1)
+rda1_loading <- as.data.frame(taxon_scores) %>%
+  rownames_to_column("taxon") %>%
+  rename(RDA1 = 2) %>%
+  mutate(abs_load = abs(RDA1)) %>%
+  arrange(desc(abs_load))
+
+# Add taxonomy
+tax_df <- as.data.frame(tax_table(Cats_ps)) %>%
+  rownames_to_column("taxon") %>%
+  select(taxon, genus, species)
+
+rda1_loading <- rda1_loading %>%
+  left_join(tax_df, by = "taxon") %>%
+  mutate(label = ifelse(is.na(species), taxon, paste(genus, species, sep = " ")),
+         direction = ifelse(RDA1 > 0, "Domestic-associated", "Feral-associated"))
+
+# Top 20
+rda1_loading %>%
+  head(20) %>%
+  ggplot(aes(x = reorder(label, RDA1), y = RDA1, fill = direction)) +
+    geom_col() +
+    coord_flip() +
+    scale_fill_manual(values = c("Domestic-associated" = "#E74C3C", 
+                                 "Feral-associated" = "#3498DB")) +
+    labs(x = NULL, y = "RDA1 loading", fill = NULL,
+         title = "Figure 13: Top 20 taxa driving separation between domestic and feral cats") +
+    theme_bw()
+```
+
+A country-focused volcano plot
+```{r}
+## Volcano plot: each country vs all others (CLR-transformed, adjusted for origin)
+
+# Ensure CLR data exists
+if (!exists("dat_clr")) {
+  cat_data_clr <- transform_sample_counts(Cats_ps, function(x) {
+    x <- x + 1e-9
+    log(x) - mean(log(x))
+  })
+  otu_clr <- as(otu_table(cat_data_clr), "matrix")
+  if (taxa_are_rows(cat_data_clr)) otu_clr <- t(otu_clr)
+  otu_clr <- as.data.frame(otu_clr)
+  meta_clr <- as(sample_data(cat_data_clr), "data.frame")
+  
+  # tax_rel should already exist from earlier preprocessing
+  dat_clr <- otu_clr %>%
+    rownames_to_column("sample_id") %>%
+    pivot_longer(-sample_id, names_to = "taxon", values_to = "clr") %>%
+    left_join(meta_clr %>% rownames_to_column("sample_id"), by = "sample_id") %>%
+    left_join(tax_rel %>% rownames_to_column("taxon"), by = "taxon")
+}
+
+# Compare each location vs all others
+locations <- unique(dat_clr$location)
+
+clr_location_results <- map_dfr(locations, function(this_location) {
+  dat_clr %>%
+    mutate(
+      location_group = ifelse(location == this_location, this_location, "Other"),
+      location_group = factor(location_group, levels = c("Other", this_location)),
+      origin = relevel(factor(origin), ref = "Domestic")
+    ) %>%
+    group_by(taxon, genus, species) %>%
+    group_modify(~ {
+      fit <- lm(clr ~ location_group + origin, data = .x)
+      broom::tidy(fit)
+    }) %>%
+    ungroup() %>%
+    filter(str_detect(term, "^location_group")) %>%   # FIXED: captures the target location coefficient
+    mutate(target_location = this_location)
+}) %>%
+  group_by(target_location) %>%
+  mutate(q_value = p.adjust(p.value, method = "BH")) %>%
+  ungroup()
+
+# Volcano plot
+clr_location_results %>%
+  mutate(
+    neg_log10_q = -log10(q_value),
+    direction = case_when(
+      q_value < 0.05 & estimate > 0 ~ "Enriched in target location",
+      q_value < 0.05 & estimate < 0 ~ "Depleted in target location",
+      TRUE ~ "Not significant"
+    )
+  ) %>%
+  ggplot(aes(x = estimate, y = neg_log10_q, color = direction)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  facet_wrap(~ target_location, scales = "free_y") +
+  scale_color_manual(values = c("Enriched in target location" = "#2c7bb6",
+                                "Depleted in target location" = "#d7191c",
+                                "Not significant" = "grey70")) +
+  labs(x = "CLR estimate (target location vs all others)",
+       y = "-log10(q-value)",
+       color = NULL,
+       title = "Volcano plot: each country compared to all others (CLR, adjusted for origin)") +
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "lightgrey"))
+```
+
 
 
 
