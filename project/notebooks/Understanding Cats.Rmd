@@ -1,0 +1,101 @@
+---
+title: "Understanding Cats"
+author: "Frederik Hilbert"
+date: "2026-05-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Libraraytes}
+library(phyloseq)
+library(vegan)
+library(dplyr)
+library(tibble)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(ggh4x)
+library(lme4)
+library(lmerTest)
+library(broom.mixed)
+```
+
+
+```{r Loading Data}
+file_path <- "/home/hilbert/Desktop/Uni/Meta_and_Micro/NBIB25004U-Metagenomics-2026/group-project-group-7/project/data/molecular_ecology_17695.rds"
+
+Cats <- readRDS(file_path)
+
+Cats_ps <- Cats$phyloseq
+
+```
+
+
+
+```{r Check for locations}
+sample_data(Cats_ps)   
+rank_names(Cats_ps)
+sample_variables(Cats_ps)
+```
+## Where are the cats from 
+```{r}
+nms <- sample_names(Cats_ps)
+countries <- sub("_.*", "", nms)
+
+table(countries)
+```
+
+
+```{r}
+
+df <- data.frame(sample_data(Cats_ps))   
+
+df %>%
+  count(location, origin) %>%
+  pivot_wider(names_from = origin, values_from = n, values_fill = 0)
+```
+
+## Relative Aboundance for microbiomes
+```{r}
+ps_rel <- transform_sample_counts(Cats_ps, function(x) x / sum(x))
+otu_rel <- as(otu_table(ps_rel), "matrix") %>% t() %>% as.data.frame()
+meta_rel <- as(sample_data(ps_rel), "matrix") %>% as.data.frame()
+tax_rel <- as(tax_table(ps_rel), "matrix") %>% as.data.frame()
+
+
+
+ps_genus <- tax_glom(ps_rel, taxrank = "genus")
+
+plot_bar(ps_genus, fill = "genus") +
+  facet_nested(~ location + origin, scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_blank())
+```
+
+
+## Count taxas
+```{r}
+ps_rel
+
+
+```
+
+## Plot completeness vs contermination
+```{r}
+Cats_mag <-Cats$mag_info
+
+plot(x = Cats_mag$contamination, 
+     y = Cats_mag$completeness, 
+     xlab = "Contamination", 
+     ylab = "Completeness",
+     xlim = c(0, 8),
+     ylim = c(0,100),
+     main = "Scatterplot of Data Quality")
+```
+
+
