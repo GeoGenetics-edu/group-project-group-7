@@ -4,7 +4,7 @@
 
 | Member | KU-ID |
 |--------|-------|
-| Ellen | _abc123_ |
+| Ellen | _cxk650_ |
 | Rikke| _abc123_ |
 | Frederik | _abc123_ |
 | Alba | qzd965 |
